@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/taurusgroup/multi-party-sig/internal/test"
 	"github.com/taurusgroup/multi-party-sig/pkg/ecdsa"
@@ -250,10 +251,136 @@ func All(id party.ID, ids party.IDSlice, threshold int, message []byte, n *test.
 	return nil
 }
 
-func main() {
+func benchmarkCMP(id party.ID, ids party.IDSlice, threshold int, message []byte, n *test.Network, wg *sync.WaitGroup, pl *pool.Pool) (time.Duration, time.Duration, error) {
+	defer wg.Done()
 
-	ids := party.IDSlice{"a", "b", "c", "d", "e", "f"}
-	threshold := 4
+	keygenStart := time.Now()
+	// CMP KEYGEN
+	keygenConfig, err := CMPKeygen(id, ids, threshold, n, pl)
+	if err != nil {
+		return 0, 0, err
+	}
+	CMP_KEYGEN_time := time.Since(keygenStart)
+
+	signers := ids[:threshold+1]
+	if !signers.Contains(id) {
+		n.Quit(id)
+		return 0, 0, err
+	}
+
+	// CMP PRESIGN
+	preSignature, err := CMPPreSign(keygenConfig, signers, n, pl)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	// CMP PRESIGN ONLINE
+	err = CMPPreSignOnline(keygenConfig, preSignature, message, n, pl)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	CMP_time := time.Since(keygenStart)
+
+	return CMP_KEYGEN_time, CMP_time, nil
+}
+
+func benchmarkFrost(id party.ID, ids party.IDSlice, threshold int, message []byte, n *test.Network, wg *sync.WaitGroup, pl *pool.Pool) (time.Duration, time.Duration, error) {
+	defer wg.Done()
+
+	keygenStart := time.Now()
+
+	// FROST KEYGEN
+	frostResult, err := FrostKeygen(id, ids, threshold, n)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	Frost_KEYGEN_time := time.Since(keygenStart)
+
+	/*// FROST KEYGEN TAPROOT
+	frostResultTaproot, err := FrostKeygenTaproot(id, ids, threshold, n)
+	if err != nil {
+		return err
+	}*/
+
+	signers := ids[:threshold+1]
+	if !signers.Contains(id) {
+		n.Quit(id)
+		return 0, 0, err
+	}
+
+	// FROST SIGN
+	err = FrostSign(frostResult, id, message, signers, n)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	/*// FROST SIGN TAPROOT
+	err = FrostSignTaproot(frostResultTaproot, id, message, signers, n)
+	if err != nil {
+		return err
+	}*/
+
+	Frost_time := time.Since(keygenStart)
+
+	return Frost_KEYGEN_time, Frost_time, nil
+}
+
+type TimeMetrics struct {
+	Threshold  int
+	N          int
+	KeygenTime time.Duration
+	SignTime   time.Duration
+}
+
+/*func main() {
+
+	fmt.Print("lunching main")
+
+	var timeMetrics []TimeMetrics
+
+	full_ids := party.IDSlice{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t"}
+	messageToSign := []byte("hello")
+	for id_num := 1; id_num < 8; id_num++ {
+		ids := full_ids[:id_num]
+		for threshold := 2; threshold < int(math.Min(15, float64(id_num))); threshold++ {
+
+			net := test.NewNetwork(ids)
+
+			var wg sync.WaitGroup
+			for _, id := range ids {
+				wg.Add(1)
+				go func(id party.ID) {
+					pl := pool.NewPool(0)
+					defer pl.TearDown()
+					keygen_Time, sign_time, err := benchmarkFrost(id, ids, threshold, messageToSign, net, &wg, pl)
+					if err != nil {
+						fmt.Println(err)
+					}
+					timeMetrics = append(timeMetrics, TimeMetrics{Threshold: threshold, N: id_num, KeygenTime: keygen_Time, SignTime: sign_time})
+
+				}(id)
+			}
+			wg.Wait()
+
+		}
+	}
+
+	// Print or process the collected time metrics as needed
+	for _, metric := range timeMetrics {
+		fmt.Printf("Threshold: %d, N: %d, KeygenTime: %v, SignTime: %v\n", metric.Threshold, metric.N, metric.KeygenTime, metric.SignTime)
+	}
+
+	fmt.Print("end lunching main")
+}*/
+
+func main() {
+	N := 3
+	threshold := 2
+
+	ids := party.IDSlice{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t"}
+	ids = ids[:N]
 	messageToSign := []byte("hello")
 
 	net := test.NewNetwork(ids)
@@ -264,10 +391,13 @@ func main() {
 		go func(id party.ID) {
 			pl := pool.NewPool(0)
 			defer pl.TearDown()
-			if err := All(id, ids, threshold, messageToSign, net, &wg, pl); err != nil {
+			keygen_Time, sign_time, err := benchmarkCMP(id, ids, threshold, messageToSign, net, &wg, pl)
+			if err != nil {
 				fmt.Println(err)
 			}
+			fmt.Printf("KeygenTime: %v, SignTime: %v\n", keygen_Time, sign_time)
 		}(id)
 	}
+
 	wg.Wait()
 }

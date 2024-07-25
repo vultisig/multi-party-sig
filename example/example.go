@@ -258,14 +258,14 @@ func benchmarkCMP(id party.ID, ids party.IDSlice, threshold int, message []byte,
 	// CMP KEYGEN
 	keygenConfig, err := CMPKeygen(id, ids, threshold, n, pl)
 	if err != nil {
-		return 0, 0, err
+		return 0, 1, err
 	}
 	CMP_KEYGEN_time := time.Since(keygenStart)
 
 	signers := ids[:threshold+1]
 	if !signers.Contains(id) {
 		n.Quit(id)
-		return 0, 0, err
+		return 1, 0, err
 	}
 
 	// CMP PRESIGN
@@ -277,7 +277,7 @@ func benchmarkCMP(id party.ID, ids party.IDSlice, threshold int, message []byte,
 	// CMP PRESIGN ONLINE
 	err = CMPPreSignOnline(keygenConfig, preSignature, message, n, pl)
 	if err != nil {
-		return 0, 0, err
+		return 1, 1, err
 	}
 
 	CMP_time := time.Since(keygenStart)
@@ -334,70 +334,53 @@ type TimeMetrics struct {
 	SignTime   time.Duration
 }
 
-/*func main() {
-
-	fmt.Print("lunching main")
-
-	var timeMetrics []TimeMetrics
-
-	full_ids := party.IDSlice{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t"}
-	messageToSign := []byte("hello")
-	for id_num := 1; id_num < 8; id_num++ {
-		ids := full_ids[:id_num]
-		for threshold := 2; threshold < int(math.Min(15, float64(id_num))); threshold++ {
-
-			net := test.NewNetwork(ids)
-
-			var wg sync.WaitGroup
-			for _, id := range ids {
-				wg.Add(1)
-				go func(id party.ID) {
-					pl := pool.NewPool(0)
-					defer pl.TearDown()
-					keygen_Time, sign_time, err := benchmarkFrost(id, ids, threshold, messageToSign, net, &wg, pl)
-					if err != nil {
-						fmt.Println(err)
-					}
-					timeMetrics = append(timeMetrics, TimeMetrics{Threshold: threshold, N: id_num, KeygenTime: keygen_Time, SignTime: sign_time})
-
-				}(id)
-			}
-			wg.Wait()
-
-		}
+func main() {
+	list := [][]int{
+		{2, 3},
+		{2, 4},
+		{3, 4},
+		{2, 5},
+		{3, 5},
+		{4, 5},
+		{2, 6},
+		{3, 6},
+		{4, 6},
+		{5, 6},
+		{2, 7},
+		{14, 20},
 	}
 
-	// Print or process the collected time metrics as needed
+	ids := party.IDSlice{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t"}
+	messageToSign := []byte("hello")
+	var timeMetrics []TimeMetrics
+
+	for _, pair := range list {
+		threshold, N = pair[0], pair[1]
+
+		ids = ids[:N]
+
+		net := test.NewNetwork(ids)
+
+		var wg sync.WaitGroup
+		for _, id := range ids {
+			wg.Add(1)
+			go func(id party.ID) {
+				pl := pool.NewPool(0)
+				defer pl.TearDown()
+				keygen_Time, sign_time, err := benchmarkCMP(id, ids, threshold, messageToSign, net, &wg, pl)
+				if err != nil {
+					fmt.Println(err)
+				}
+				timeMetrics = append(timeMetrics, TimeMetrics{Threshold: threshold, N: N, KeygenTime: keygen_Time, SignTime: sign_time})
+				//fmt.Printf("KeygenTime: %v, SignTime: %v\n", keygen_Time, sign_time)
+			}(id)
+		}
+
+		wg.Wait()
+
+	}
+
 	for _, metric := range timeMetrics {
 		fmt.Printf("Threshold: %d, N: %d, KeygenTime: %v, SignTime: %v\n", metric.Threshold, metric.N, metric.KeygenTime, metric.SignTime)
 	}
-
-	fmt.Print("end lunching main")
-}*/
-
-func main() {
-	N := 3
-	threshold := 2
-
-	ids := party.IDSlice{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t"}
-	ids = ids[:N]
-	messageToSign := []byte("hello")
-
-	net := test.NewNetwork(ids)
-
-	var wg sync.WaitGroup
-	for _, id := range ids {
-		wg.Add(1)
-		go func(id party.ID) {
-			pl := pool.NewPool(0)
-			defer pl.TearDown()
-			keygen_Time, sign_time, err := benchmarkCMP(id, ids, threshold, messageToSign, net, &wg, pl)
-			if err != nil {
-				fmt.Println(err)
-			}
-			fmt.Printf("KeygenTime: %v, SignTime: %v\n", keygen_Time, sign_time)
-		}(id)
-	}
-
-	wg.Wait()
 }

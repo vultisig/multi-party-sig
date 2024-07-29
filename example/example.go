@@ -251,38 +251,72 @@ func All(id party.ID, ids party.IDSlice, threshold int, message []byte, n *test.
 	return nil
 }
 
-func benchmarkCMP(id party.ID, ids party.IDSlice, threshold int, message []byte, n *test.Network, wg *sync.WaitGroup, pl *pool.Pool) (time.Duration, time.Duration, error) {
+func benchmarkCMPPresign(id party.ID, ids party.IDSlice, threshold int, message []byte, n *test.Network, wg *sync.WaitGroup, pl *pool.Pool) (time.Duration, time.Duration, time.Duration, error) {
 	defer wg.Done()
 
 	keygenStart := time.Now()
 	// CMP KEYGEN
 	keygenConfig, err := CMPKeygen(id, ids, threshold, n, pl)
 	if err != nil {
-		return 0, 1, err
+		return 0, 1, 0, err
 	}
 	CMP_KEYGEN_time := time.Since(keygenStart)
+
+	presignStart := time.Now()
 
 	signers := ids[:threshold+1]
 	if !signers.Contains(id) {
 		n.Quit(id)
-		return 1, 0, err
+		return 1, 0, 0, err
 	}
 
 	// CMP PRESIGN
 	preSignature, err := CMPPreSign(keygenConfig, signers, n, pl)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
+
+	presign_time := time.Since(presignStart)
+	signStart := time.Now()
 
 	// CMP PRESIGN ONLINE
 	err = CMPPreSignOnline(keygenConfig, preSignature, message, n, pl)
 	if err != nil {
-		return 1, 1, err
+		return 1, 1, 0, err
 	}
 
-	CMP_time := time.Since(keygenStart)
+	sign_time := time.Since(signStart)
 
-	return CMP_KEYGEN_time, CMP_time, nil
+	return CMP_KEYGEN_time, presign_time, sign_time, nil
+}
+
+func benchmarkCMP7rounds(id party.ID, ids party.IDSlice, threshold int, message []byte, n *test.Network, wg *sync.WaitGroup, pl *pool.Pool) (time.Duration, time.Duration, time.Duration, error) {
+	defer wg.Done()
+
+	keygenStart := time.Now()
+	// CMP KEYGEN
+	keygenConfig, err := CMPKeygen(id, ids, threshold, n, pl)
+	if err != nil {
+		return 0, 1, 0, err
+	}
+	CMP_KEYGEN_time := time.Since(keygenStart)
+	signStart := time.Now()
+
+	signers := ids[:threshold+1]
+	if !signers.Contains(id) {
+		n.Quit(id)
+		return 1, 0, 0, err
+	}
+
+	// CMP SIGN
+	err = CMPSign(keygenConfig, message, signers, n, pl)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	CMP_time := time.Since(signStart)
+
+	return CMP_KEYGEN_time, CMP_time, time.Duration(0), nil
 }
 
 func benchmarkFrost(id party.ID, ids party.IDSlice, threshold int, message []byte, n *test.Network, wg *sync.WaitGroup, pl *pool.Pool) (time.Duration, time.Duration, error) {
@@ -328,25 +362,35 @@ func benchmarkFrost(id party.ID, ids party.IDSlice, threshold int, message []byt
 }
 
 type TimeMetrics struct {
-	Threshold  int
-	N          int
-	KeygenTime time.Duration
-	SignTime   time.Duration
+	Threshold   int
+	N           int
+	KeygenTime  time.Duration
+	PreSignTime time.Duration
+	SignTime    time.Duration
+}
+
+type AverageTimeMetrics struct {
+	Threshold   int
+	N           int
+	KeygenTime  time.Duration
+	PreSignTime time.Duration
+	SignTime    time.Duration
+	Count       int
 }
 
 func main() {
 	list := [][]int{
-		{2, 3},
-		{2, 4},
-		{3, 4},
-		{2, 5},
-		{3, 5},
-		{4, 5},
-		{2, 6},
-		{3, 6},
-		{4, 6},
-		{5, 6},
-		{2, 7},
+		//{2, 3},
+		//{2, 4},
+		//{3, 4},
+		//{2, 5},
+		//{3, 5},
+		//{4, 5},
+		//{2, 6},
+		//{3, 6},
+		//{4, 6},
+		//{5, 6},
+		//{2, 7},
 		{14, 20},
 	}
 
@@ -355,7 +399,7 @@ func main() {
 	var timeMetrics []TimeMetrics
 
 	for _, pair := range list {
-		threshold, N = pair[0], pair[1]
+		threshold, N := pair[0], pair[1]
 
 		ids = ids[:N]
 
@@ -363,15 +407,24 @@ func main() {
 
 		var wg sync.WaitGroup
 		for _, id := range ids {
-			wg.Add(1)
+			numRuns := 1
+			wg.Add(numRuns)
 			go func(id party.ID) {
 				pl := pool.NewPool(0)
 				defer pl.TearDown()
-				keygen_Time, sign_time, err := benchmarkCMP(id, ids, threshold, messageToSign, net, &wg, pl)
-				if err != nil {
-					fmt.Println(err)
+
+				keygen_Time, presign_time, sign_time := time.Duration(0), time.Duration(0), time.Duration(0)
+
+				for run := 0; run < numRuns; run++ {
+					keygen_Time_temp, presign_time_temp, sign_time_temp, err := benchmarkCMP7rounds(id, ids, threshold, messageToSign, net, &wg, pl)
+					if err != nil {
+						fmt.Println(err)
+					}
+					keygen_Time += keygen_Time_temp / time.Duration(numRuns)
+					presign_time += presign_time_temp / time.Duration(numRuns)
+					sign_time += sign_time_temp / time.Duration(numRuns)
 				}
-				timeMetrics = append(timeMetrics, TimeMetrics{Threshold: threshold, N: N, KeygenTime: keygen_Time, SignTime: sign_time})
+				timeMetrics = append(timeMetrics, TimeMetrics{Threshold: threshold, N: N, KeygenTime: keygen_Time, PreSignTime: presign_time, SignTime: sign_time})
 				//fmt.Printf("KeygenTime: %v, SignTime: %v\n", keygen_Time, sign_time)
 			}(id)
 		}
@@ -381,6 +434,6 @@ func main() {
 	}
 
 	for _, metric := range timeMetrics {
-		fmt.Printf("Threshold: %d, N: %d, KeygenTime: %v, SignTime: %v\n", metric.Threshold, metric.N, metric.KeygenTime, metric.SignTime)
+		fmt.Printf("Threshold: %d, N: %d, KeygenTime: %v, PreSignTime: %v, SignTime: %v\n", metric.Threshold, metric.N, metric.KeygenTime, metric.PreSignTime, metric.SignTime)
 	}
 }

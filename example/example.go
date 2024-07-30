@@ -319,7 +319,7 @@ func benchmarkCMP7rounds(id party.ID, ids party.IDSlice, threshold int, message 
 	return CMP_KEYGEN_time, CMP_time, time.Duration(0), nil
 }
 
-func benchmarkFrost(id party.ID, ids party.IDSlice, threshold int, message []byte, n *test.Network, wg *sync.WaitGroup, pl *pool.Pool) (time.Duration, time.Duration, error) {
+func benchmarkFrostWithoutTaproot(id party.ID, ids party.IDSlice, threshold int, message []byte, n *test.Network, wg *sync.WaitGroup, pl *pool.Pool) (time.Duration, time.Duration, time.Duration, error) {
 	defer wg.Done()
 
 	keygenStart := time.Now()
@@ -327,38 +327,59 @@ func benchmarkFrost(id party.ID, ids party.IDSlice, threshold int, message []byt
 	// FROST KEYGEN
 	frostResult, err := FrostKeygen(id, ids, threshold, n)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 
 	Frost_KEYGEN_time := time.Since(keygenStart)
 
-	/*// FROST KEYGEN TAPROOT
-	frostResultTaproot, err := FrostKeygenTaproot(id, ids, threshold, n)
-	if err != nil {
-		return err
-	}*/
+	signStart := time.Now()
 
 	signers := ids[:threshold+1]
 	if !signers.Contains(id) {
 		n.Quit(id)
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 
 	// FROST SIGN
 	err = FrostSign(frostResult, id, message, signers, n)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 
-	/*// FROST SIGN TAPROOT
+	Frost_Sign_time := time.Since(signStart)
+
+	return Frost_KEYGEN_time, Frost_Sign_time, 0, nil
+}
+
+func benchmarkFrostTaproot(id party.ID, ids party.IDSlice, threshold int, message []byte, n *test.Network, wg *sync.WaitGroup, pl *pool.Pool) (time.Duration, time.Duration, time.Duration, error) {
+	defer wg.Done()
+
+	keygenStart := time.Now()
+
+	Frost_KEYGEN_time := time.Since(keygenStart)
+
+	// FROST KEYGEN TAPROOT
+	frostResultTaproot, err := FrostKeygenTaproot(id, ids, threshold, n)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	signStart := time.Now()
+
+	signers := ids[:threshold+1]
+	if !signers.Contains(id) {
+		n.Quit(id)
+		return 0, 0, 0, err
+	}
+	// FROST SIGN TAPROOT
 	err = FrostSignTaproot(frostResultTaproot, id, message, signers, n)
 	if err != nil {
-		return err
-	}*/
+		return 0, 0, 0, err
+	}
 
-	Frost_time := time.Since(keygenStart)
+	Frost_Sign_time := time.Since(signStart)
 
-	return Frost_KEYGEN_time, Frost_time, nil
+	return Frost_KEYGEN_time, Frost_Sign_time, 0, nil
 }
 
 type TimeMetrics struct {
@@ -416,7 +437,7 @@ func main() {
 				keygen_Time, presign_time, sign_time := time.Duration(0), time.Duration(0), time.Duration(0)
 
 				for run := 0; run < numRuns; run++ {
-					keygen_Time_temp, presign_time_temp, sign_time_temp, err := benchmarkCMP7rounds(id, ids, threshold, messageToSign, net, &wg, pl)
+					keygen_Time_temp, presign_time_temp, sign_time_temp, err := benchmarkFrostTaproot(id, ids, threshold, messageToSign, net, &wg, pl) //replace here which benchmark you want to do
 					if err != nil {
 						fmt.Println(err)
 					}

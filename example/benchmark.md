@@ -31,6 +31,12 @@ Threshold: 14, N: 20
 Average KeygenTime: 2m25.489146571s
 Average SignTime: 16.087845903s
 
+- Doerner scheme : 
+
+Threshold: 2, N: 2
+Average KeygenTime : 6.789965 ms
+Average SignTime : 20.127597ms
+
 
 - EdDSA on Binance lib:
 
@@ -61,4 +67,6 @@ Average SignTime: 1.741807ms
 Threshold: 14, N: 20
 Average KeygenTime: 77ns
 Average SignTime: 11.148474ms
+
+
 

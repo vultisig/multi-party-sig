@@ -3,8 +3,10 @@ package doerner
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/taurusgroup/multi-party-sig/internal/test"
@@ -176,4 +178,28 @@ func BenchmarkSign(t *testing.B) {
 	for i := 0; i < t.N; i++ {
 		runSign(partyIDs, configSender, configReceiver)
 	}
+}
+
+func Benchmark(t *testing.B) {
+
+	keygenStart := time.Now()
+
+	partyIDs := test.PartyIDs(2)
+
+	configSender, configReceiver, err := runKeygen(partyIDs)
+	require.NoError(t, err)
+	//checkKeygenOutput(t, configSender, configReceiver)
+
+	keygen_Time := time.Since(keygenStart)
+	signStart := time.Now()
+
+	sig, err := runSign(partyIDs, configSender, configReceiver)
+	require.NoError(t, err)
+	require.True(t, sig.Verify(configSender.Public, testHash))
+	require.True(t, sig.Verify(configReceiver.Public, testHash))
+
+	sign_time := time.Since(signStart)
+
+	fmt.Printf("KeygenTime: %v, SignTime: %v\n", keygen_Time, sign_time)
+
 }

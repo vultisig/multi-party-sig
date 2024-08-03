@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -399,6 +398,7 @@ type AverageTimeMetrics struct {
 	Count       int
 }
 
+/*
 func main() {
 	list := [][]int{
 		//{2, 3},
@@ -458,3 +458,4 @@ func main() {
 		fmt.Printf("Threshold: %d, N: %d, KeygenTime: %v, PreSignTime: %v, SignTime: %v\n", metric.Threshold, metric.N, metric.KeygenTime, metric.PreSignTime, metric.SignTime)
 	}
 }
+*/
